@@ -21,7 +21,7 @@ as well as to verify your TL classifier.
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
-LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
+LOOKAHEAD_WPS = 500 # Number of waypoints we will publish. You can change this number
 
 
 class WaypointUpdater(object):
@@ -30,24 +30,49 @@ class WaypointUpdater(object):
 
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
-
         # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
 
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
 
         # TODO: Add other member variables you need below
-
+        self.base_wps=[]
+        #self.last_pos_x = 0
+        #self.is_first_cycle = 1
         rospy.spin()
 
     def pose_cb(self, msg):
         # TODO: Implement
-        pass
+        #print("position_x = " + str(msg.twist.linear.x))
+        #print("stamp = " + str(msg.header.stamp))
+        #if self.is_first_cycle == 1:
+        #    self.last_pos_x = msg.pose.position.x
+        #    self.is_first_cycle = 0
+
+        #delta_x = msg.pose.position.x - self.last_pos_x
+        #if delta_x < 0:
+        #    delta_x = 0
+        pos_x = msg.pose.position.x
+        current_idx = 0
+        final_wps = []
+        for idx in range(len(self.base_wps)):
+            if pos_x > self.base_wps[idx].pose.pose.position.x and pos_x < self.base_wps[(idx+1)%len(self.base_wps)].pose.pose.position.x:
+                current_idx = idx + 1
+                break
+        for idx in range(0,LOOKAHEAD_WPS):
+            final_wps.append(self.base_wps[(idx + current_idx)%len(self.base_wps)])
+
+        #for idx in range(len(final_wps)):
+        #    print("x = " + str(final_wps[idx].pose.pose.position.x))
+        #    print("y = " + str(final_wps[idx].pose.pose.position.y))
+        #    print("***********************")
+        self.publish(final_wps)
 
     def waypoints_cb(self, waypoints):
         # TODO: Implement
-        pass
-
+        self.base_wps = waypoints.waypoints
+        #print(self.get_waypoint_velocity(self.base_wps[1000]))
+       
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
         pass
@@ -70,6 +95,12 @@ class WaypointUpdater(object):
             wp1 = i
         return dist
 
+    def publish(self,waypoints):
+        lane = Lane()
+        lane.header.frame_id = '/world'
+        lane.header.stamp = rospy.Time(0)
+        lane.waypoints = waypoints
+        self.final_waypoints_pub.publish(lane)
 
 if __name__ == '__main__':
     try:
