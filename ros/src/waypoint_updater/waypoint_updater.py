@@ -21,7 +21,7 @@ as well as to verify your TL classifier.
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
-LOOKAHEAD_WPS = 500 # Number of waypoints we will publish. You can change this number
+LOOKAHEAD_WPS = 300 # Number of waypoints we will publish. You can change this number
 
 
 class WaypointUpdater(object):
@@ -37,41 +37,38 @@ class WaypointUpdater(object):
 
         # TODO: Add other member variables you need below
         self.base_wps=[]
-        #self.last_pos_x = 0
-        #self.is_first_cycle = 1
-        rospy.spin()
+	self.is_wps_available = False
+	self.is_pos_update_available = False
+        self.schedule(1)
 
-    def pose_cb(self, msg):
-        # TODO: Implement
-        #print("position_x = " + str(msg.twist.linear.x))
-        #print("stamp = " + str(msg.header.stamp))
-        #if self.is_first_cycle == 1:
-        #    self.last_pos_x = msg.pose.position.x
-        #    self.is_first_cycle = 0
+    def schedule(self,time):	
+	while rospy.is_shutdown() != True:
+	    if self.is_wps_available == True and self.is_pos_update_available == True:
+	    	final_wps = self.wps_update()
+		self.publish(final_wps)
+	    rospy.sleep(time)
 
-        #delta_x = msg.pose.position.x - self.last_pos_x
-        #if delta_x < 0:
-        #    delta_x = 0
-        pos_x = msg.pose.position.x
+    def wps_update(self):
         current_idx = 0
         final_wps = []
         for idx in range(len(self.base_wps)):
-            if pos_x > self.base_wps[idx].pose.pose.position.x and pos_x < self.base_wps[(idx+1)%len(self.base_wps)].pose.pose.position.x:
+            if (self.pos.x > self.base_wps[idx].pose.pose.position.x and
+		self.pos.x < self.base_wps[(idx+1)%len(self.base_wps)].pose.pose.position.x):
                 current_idx = idx + 1
                 break
         for idx in range(0,LOOKAHEAD_WPS):
             final_wps.append(self.base_wps[(idx + current_idx)%len(self.base_wps)])
+	return final_wps
 
-        #for idx in range(len(final_wps)):
-        #    print("x = " + str(final_wps[idx].pose.pose.position.x))
-        #    print("y = " + str(final_wps[idx].pose.pose.position.y))
-        #    print("***********************")
-        self.publish(final_wps)
+    def pose_cb(self, msg):
+        # TODO: Implement
+	self.is_pos_update_available = True
+        self.pos = msg.pose.position
 
     def waypoints_cb(self, waypoints):
         # TODO: Implement
         self.base_wps = waypoints.waypoints
-        #print(self.get_waypoint_velocity(self.base_wps[1000]))
+	self.is_wps_available = True
        
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
