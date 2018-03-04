@@ -5,6 +5,8 @@ from geometry_msgs.msg import PoseStamped
 from styx_msgs.msg import Lane, Waypoint
 
 import math
+import tf.transformations as tf
+import numpy as np
 
 '''
 This node will publish waypoints from the car's current position to some `x` distance ahead.
@@ -39,6 +41,9 @@ class WaypointUpdater(object):
         self.base_wps=[]
 	self.is_wps_available = False
 	self.is_pos_update_available = False
+	self.max_speed = 4.4 # mps = ~10mph
+	self.min_speed = 2.2 # mps = ~5mph 
+	self.speed = 0. # start at standstill
         self.schedule(1)
 
     def schedule(self,time):	
@@ -48,22 +53,65 @@ class WaypointUpdater(object):
 		self.publish(final_wps)
 	    rospy.sleep(time)
 
+    def update_velocity(self,fwps):
+	veh_yaw = tf.euler_from_quaternion([self.pos.orientation.x,
+					  self.pos.orientation.y,
+					  self.pos.orientation.z,
+					  self.pos.orientation.w])
+	wp_yaw = tf.euler_from_quaternion([fwps[0].pose.pose.orientation.x,
+					  fwps[0].pose.pose.orientation.y,
+					  fwps[0].pose.pose.orientation.z,
+					  fwps[0].pose.pose.orientation.w])
+	
+	#TODO: use trignometrics instead of assuming always vehicle angle = 45° for better linearization
+	if math.fabs(self.pos.position.y - fwps[0].pose.pose.position.y) <= 1. and math.fabs(veh_yaw[2] - wp_yaw[2]) <= np.pi/40.:
+	    self.speed += .44
+	else:
+	    self.speed -= .44
+	
+	if self.speed > self.max_speed:
+	    self.speed = self.max_speed
+	if self.speed < self.min_speed:
+	    self.speed = self.min_speed
+
+	for wp in fwps:
+	    wp.twist.twist.linear.x = self.speed
+	    wp.twist.twist.linear.y = 0.
+	    wp.twist.twist.linear.z = 0.
+	    wp.twist.twist.angular.x = 0.
+	    wp.twist.twist.angular.y = 0.
+	    wp.twist.twist.angular.z = 0.
+
+	print("speed = " + str(fwps[0].twist.twist.linear.x))
+
+	return fwps
+
     def wps_update(self):
         current_idx = 0
         final_wps = []
+	is_point_located = False
         for idx in range(len(self.base_wps)):
-            if (self.pos.x > self.base_wps[idx].pose.pose.position.x and
-		self.pos.x < self.base_wps[(idx+1)%len(self.base_wps)].pose.pose.position.x):
-                current_idx = idx + 1
+            if (self.pos.position.x > self.base_wps[idx].pose.pose.position.x and
+		self.pos.position.x < self.base_wps[(idx+1)%len(self.base_wps)].pose.pose.position.x):
+		temp_x = self.pos.position.x + math.fabs(self.pos.position.y - self.base_wps[idx + 1].pose.pose.position.y)
+		is_point_located = True
+
+	    if(is_point_located == True and
+	       temp_x > self.base_wps[idx].pose.pose.position.x and
+	       temp_x < self.base_wps[(idx+1)%len(self.base_wps)].pose.pose.position.x):
+		current_idx = idx + 1
                 break
         for idx in range(0,LOOKAHEAD_WPS):
             final_wps.append(self.base_wps[(idx + current_idx)%len(self.base_wps)])
+
+	if len(final_wps) > 0:
+	    final_wps = self.update_velocity(final_wps)
 	return final_wps
 
     def pose_cb(self, msg):
         # TODO: Implement
 	self.is_pos_update_available = True
-        self.pos = msg.pose.position
+        self.pos = msg.pose
 
     def waypoints_cb(self, waypoints):
         # TODO: Implement
