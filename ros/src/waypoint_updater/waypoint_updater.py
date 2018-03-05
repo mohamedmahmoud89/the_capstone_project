@@ -23,7 +23,7 @@ as well as to verify your TL classifier.
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
-LOOKAHEAD_WPS = 300 # Number of waypoints we will publish. You can change this number
+LOOKAHEAD_WPS = 20 # Number of waypoints we will publish. You can change this number
 
 
 class WaypointUpdater(object):
@@ -39,19 +39,24 @@ class WaypointUpdater(object):
 
         # TODO: Add other member variables you need below
         self.base_wps=[]
+	self.final_wps = []
+	self.mph2mps = .447
 	self.is_wps_available = False
 	self.is_pos_update_available = False
-	self.max_speed = 4.4 # mps = ~10mph
-	self.min_speed = 2.2 # mps = ~5mph 
+	self.max_speed = 35. * self.mph2mps 
+	self.min_speed = 20. * self.mph2mps 
 	self.speed = 0. # start at standstill
-        self.schedule(1)
+	self.current_idx = -1
+        self.schedule(10)
 
-    def schedule(self,time):	
+    def schedule(self,freq):
+	rate = rospy.Rate(freq)	
 	while rospy.is_shutdown() != True:
 	    if self.is_wps_available == True and self.is_pos_update_available == True:
-	    	final_wps = self.wps_update()
-		self.publish(final_wps)
-	    rospy.sleep(time)
+	    	self.final_wps = self.wps_update()
+	        self.is_pos_update_available = False
+	    self.publish(self.final_wps)
+	    rate.sleep()
 
     def update_velocity(self,fwps):
 	veh_yaw = tf.euler_from_quaternion([self.pos.orientation.x,
@@ -63,11 +68,10 @@ class WaypointUpdater(object):
 					  fwps[0].pose.pose.orientation.z,
 					  fwps[0].pose.pose.orientation.w])
 	
-	#TODO: use trignometrics instead of assuming always vehicle angle = 45° for better linearization
-	if math.fabs(self.pos.position.y - fwps[0].pose.pose.position.y) <= 1. and math.fabs(veh_yaw[2] - wp_yaw[2]) <= np.pi/40.:
-	    self.speed += .44
+	if math.fabs(self.pos.position.y - fwps[0].pose.pose.position.y) <= .5 and math.fabs(veh_yaw[2] - wp_yaw[2]) <= np.pi/80.:
+	    self.speed += self.mph2mps
 	else:
-	    self.speed -= .44
+	    self.speed -= self.mph2mps
 	
 	if self.speed > self.max_speed:
 	    self.speed = self.max_speed
@@ -76,42 +80,42 @@ class WaypointUpdater(object):
 
 	for wp in fwps:
 	    wp.twist.twist.linear.x = self.speed
-	    wp.twist.twist.linear.y = 0.
-	    wp.twist.twist.linear.z = 0.
-	    wp.twist.twist.angular.x = 0.
-	    wp.twist.twist.angular.y = 0.
-	    wp.twist.twist.angular.z = 0.
 
-	print("speed = " + str(fwps[0].twist.twist.linear.x))
+	#print("speed = " + str(fwps[0].twist.twist.linear.x))
 
 	return fwps
 
     def wps_update(self):
-        current_idx = 0
         final_wps = []
-	is_point_located = False
+	#is_point_located = False
+	#if self.pos.position.x < 100.:
+	#    self.current_idx = 0
         for idx in range(len(self.base_wps)):
             if (self.pos.position.x > self.base_wps[idx].pose.pose.position.x and
-		self.pos.position.x < self.base_wps[(idx+1)%len(self.base_wps)].pose.pose.position.x):
-		temp_x = self.pos.position.x + math.fabs(self.pos.position.y - self.base_wps[idx + 1].pose.pose.position.y)
-		is_point_located = True
-
-	    if(is_point_located == True and
-	       temp_x > self.base_wps[idx].pose.pose.position.x and
-	       temp_x < self.base_wps[(idx+1)%len(self.base_wps)].pose.pose.position.x):
-		current_idx = idx + 1
+		self.pos.position.x < self.base_wps[(idx+1)%len(self.base_wps)].pose.pose.position.x) or \
+	       (self.pos.position.x < self.base_wps[idx].pose.pose.position.x and
+		self.pos.position.x > self.base_wps[(idx+1)%len(self.base_wps)].pose.pose.position.x):
+		self.current_idx = idx + 1
+		#print(self.current_idx )
                 break
+
         for idx in range(0,LOOKAHEAD_WPS):
-            final_wps.append(self.base_wps[(idx + current_idx)%len(self.base_wps)])
+	    #temp = self.base_wps[(idx + self.current_idx)%len(self.base_wps)]
+	    #temp.twist.twist.linear.x = self.max_speed
+            final_wps.append(self.base_wps[(idx + self.current_idx)%len(self.base_wps)])
+	    #final_wps.append(temp)
 
 	if len(final_wps) > 0:
 	    final_wps = self.update_velocity(final_wps)
+	#print("wp = " + str(final_wps[0].pose.pose.position.x))
 	return final_wps
 
     def pose_cb(self, msg):
         # TODO: Implement
 	self.is_pos_update_available = True
         self.pos = msg.pose
+
+	#self.final_wps = self.wps_update()
 
     def waypoints_cb(self, waypoints):
         # TODO: Implement
