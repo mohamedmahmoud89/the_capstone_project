@@ -177,7 +177,7 @@ class WaypointUpdater(object):
 			(self.pos.position.x <= self.base_wps[(idx)%len(self.base_wps)].pose.pose.position.x and
 		        self.pos.position.x >= self.base_wps[(idx+1)%len(self.base_wps)].pose.pose.position.x)):
 		    self.current_idx = (idx + 1)%len(self.base_wps)
-		    print(self.current_idx)
+		    #print(self.current_idx)
 		    #print(self.base_wps[self.current_idx].pose.pose.position.x)
 	            break
 
@@ -208,7 +208,7 @@ class WaypointUpdater(object):
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
 	self.next_red_light_wp_idx = msg.data
-        print(msg.data)
+        #print(msg.data)
 
     def obstacle_cb(self, msg):
         # TODO: Callback for /obstacle_waypoint message. We will implement it later
